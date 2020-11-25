@@ -23,7 +23,6 @@ package org.firstinspires.ftc.teamcode.Mapsprogram;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.WayPoint;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MyPosition;
@@ -70,7 +69,7 @@ public abstract class AutoTrialBase extends LinearOpMode
         robot.init(hardwareMap);
         timer = new ElapsedTime();
 
-        //robot.resetEncoders();
+        robot.resetEncoders();
         robot.setInputShaping(false);
         myWheelSize = newWheelSize;
         myMotorRatio = newMotorRatio;
@@ -95,18 +94,20 @@ public abstract class AutoTrialBase extends LinearOpMode
                 destination.speed, passThrough, pullingFoundation)
                 && opModeIsActive()) {
             updatePosition();
+            telemetry.addData("PositionY", MyPosition.worldYPosition);
+            telemetry.addData("PositionX", MyPosition.worldXPosition);
+            telemetry.update();
         }
     }
     protected void rotateToWayPointAngle(WayPoint destination, boolean pullingFoundation) {
-            // Move the robot away from the wall.
+        // Move the robot away from the wall.
+        updatePosition();
+        robot.rotateToAngle(destination.angle, pullingFoundation, true);
+        // Loop until we get to destination.
+        updatePosition();
+        while(!robot.rotateToAngle(destination.angle, pullingFoundation, false) && opModeIsActive()) {
             updatePosition();
-            robot.rotateToAngle(destination.angle, pullingFoundation, true);
-            // Loop until we get to destination.
-            updatePosition();
-            while(!robot.rotateToAngle(destination.angle, pullingFoundation, false) && opModeIsActive()) {
-                updatePosition();
-            }
+        }
     }
-
 
 }
