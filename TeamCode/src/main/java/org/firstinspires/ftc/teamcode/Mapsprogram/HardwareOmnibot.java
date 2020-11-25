@@ -27,4 +27,28 @@ public class HardwareOmnibot extends HardwareOmnibotDrive{
         super.init(ahwMap);
     }
 
+    public void resetEncoders()
+    {
+        int sleepTime = 0;
+        int encoderCount = frontLeft.getCurrentPosition();
+
+        frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
+        while((encoderCount != 0) && (sleepTime < 1000)) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) { break; }
+            sleepTime += 10;
+            resetReads();
+            encoderCount = frontLeft.getCurrentPosition();
+        }
+
+        frontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
 }

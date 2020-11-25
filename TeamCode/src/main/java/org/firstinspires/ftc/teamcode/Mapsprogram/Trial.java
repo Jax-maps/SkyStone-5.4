@@ -15,7 +15,8 @@ public class Trial extends AutoTrialXY
         startLocation = new WayPoint(0, 0, Math.toRadians(0.0), 0.0);
 
         // Locations to test
-        //sampleLocation1 = new WayPoint(27.86, 32.86, Math.toRadians(0.0), 1.0);
+        //sampleLocatio
+        // n1 = new WayPoint(27.86, 32.86, Math.toRadians(0.0), 1.0);
         sampleLocation1 = new WayPoint(10, 0, Math.toRadians(0.0), 0.5);
     }
 }

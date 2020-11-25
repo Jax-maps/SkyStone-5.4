@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode.Mapsprogram;
 
 import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.hardware.bosch.JustLoggingAccelerationIntegrator;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -25,6 +26,8 @@ import static java.lang.Math.toRadians;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.WayPoint;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MyPosition;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MovementVars;
+
+import java.util.List;
 
 /**
  *Created by MAPS
@@ -60,6 +63,8 @@ public class HardwareOmnibotDrive
     protected BNO055IMU imu = null;
     public DistanceSensor sensorRange; // Sense distance from stone
     public DistanceSensor sensorRange2; // Confirm distance from stone
+
+    List<LynxModule> allHubs;
 
     public static boolean encodersReset = false;
     public boolean forceReset = false;
@@ -104,6 +109,11 @@ public class HardwareOmnibotDrive
     }
 
     public void resetReads() {
+        // This tells the expansion hub to bulk read all the data next time you
+        // read from the hub.
+        for (LynxModule module : allHubs) {
+            module.clearBulkCache();
+        }
         imuRead = false;
     }
 
@@ -447,6 +457,16 @@ public class HardwareOmnibotDrive
     public void init(HardwareMap ahwMap) {
         // Save reference to Hardware map
         hwMap = ahwMap;
+
+        // This tells the hubs to go into bulk read mode. This is faster to read
+        // the encoders. Typically it takes a few mSec to read each encoder, so
+        // if you are reading all three encoders every loop, it causes quite a
+        // delay. This reads all the encoders on a hub all at once when you
+        // call the resetReads function.
+        allHubs = hwMap.getAll(LynxModule.class);
+        for (LynxModule module : allHubs) {
+            module.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
 
         // Define and Initialize Motors
         frontLeft = hwMap.dcMotor.get(FRONT_LEFT_MOTOR);
