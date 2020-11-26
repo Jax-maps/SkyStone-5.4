@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode.Mapsprogram;
 
 import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.hardware.bosch.JustLoggingAccelerationIntegrator;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
@@ -26,6 +27,8 @@ import static java.lang.Math.toRadians;
 
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MyPosition;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MovementVars;
+
+import java.util.List;
 
 /**
  *Created by MAPS
@@ -65,6 +68,8 @@ public class HardwareOmnibotDrive
     protected BNO055IMU imu = null;
     public DistanceSensor sensorRange; // Sense distance from stone
     public DistanceSensor sensorRange2; // Confirm distance from stone
+
+    List<LynxModule> allHubs;
 
     public static boolean encodersReset = false;
     public boolean forceReset = false;
@@ -169,6 +174,8 @@ public class HardwareOmnibotDrive
     }
 
     public void resetReads() {
+        // This tells the expansion hub to bulk read all the data next time you
+        // read from the hub.
         for (LynxModule module : allHubs) {
             module.clearBulkCache();
         }
@@ -479,6 +486,144 @@ public class HardwareOmnibotDrive
 
         return reachedDestination;
     }
+
+
+    protected double driverInputShaping( double valueIn) {
+        double valueOut = 0.0;
+
+        if(Math.abs(valueIn) < MIN_DRIVE_RATE) {
+            valueOut = 0.0;
+        } else {
+            if (inputShaping) {
+                if (valueIn > 0) {
+                    valueOut = MIN_DRIVE_RATE + (1.0 - MIN_DRIVE_RATE) * valueIn;
+                } else {
+                    valueOut = -MIN_DRIVE_RATE + (1.0 - MIN_DRIVE_RATE) * valueIn;
+                }
+            } else {
+                valueOut = valueIn;
+            }
+        }
+
+        return valueOut;
+    }
+
+    protected double driverInputSpinShaping( double valueIn) {
+        double valueOut = 0.0;
+
+        if(Math.abs(valueIn) < MIN_SPIN_RATE) {
+            valueOut = 0.0;
+        } else {
+            if (inputShaping) {
+                if (valueIn > 0) {
+                    valueOut = (1.0 + MIN_SPIN_RATE) * valueIn - MIN_SPIN_RATE;
+                } else {
+                    valueOut = (1.0 + MIN_SPIN_RATE) * valueIn + MIN_SPIN_RATE;
+                }
+            } else {
+                valueOut = valueIn;
+            }
+        }
+
+        return valueOut;
+    }
+
+    public void disableDriveEncoders()
+    {
+        frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+    }
+    public void enableDriveEncoders(){
+        frontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
+
+    public void resetDriveEncoders()
+    {
+        int sleepTime = 0;
+        int encoderCount = frontLeft.getCurrentPosition();
+
+        frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
+        while((encoderCount != 0) && (sleepTime < 1000)) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) { break; }
+            sleepTime += 10;
+            encoderCount = frontLeft.getCurrentPosition();
+        }
+
+        frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        // Set the stop mode
+        frontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        frontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+    }
+  
+    public int getLeftEncoderWheelPosition() {
+        // This is to compensate for GF having a negative left.
+        return -rearLeft.getCurrentPosition();
+    }
+
+    public int getRightEncoderWheelPosition() {
+        return frontRight.getCurrentPosition();
+    }
+
+    public int getStrafeEncoderWheelPosition() {
+        return frontLeft.getCurrentPosition();
+    }
+
+    /* Initialize standard Hardware interfaces */
+    public void init(HardwareMap ahwMap) {
+        // Save reference to Hardware map
+        hwMap = ahwMap;
+
+        // This tells the hubs to go into bulk read mode. This is faster to read
+        // the encoders. Typically it takes a few mSec to read each encoder, so
+        // if you are reading all three encoders every loop, it causes quite a
+        // delay. This reads all the encoders on a hub all at once when you
+        // call the resetReads function.
+        allHubs = hwMap.getAll(LynxModule.class);
+        for (LynxModule module : allHubs) {
+            module.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
+
+        // Define and Initialize Motors
+        frontLeft = hwMap.dcMotor.get(FRONT_LEFT_MOTOR);
+        frontRight  = hwMap.dcMotor.get(FRONT_RIGHT_MOTOR);
+        rearLeft = hwMap.dcMotor.get(REAR_LEFT_MOTOR);
+        rearRight = hwMap.dcMotor.get(REAR_RIGHT_MOTOR);
+        sensorRange = hwMap.get(DistanceSensor.class, SENSOR_RANGE_1);
+        sensorRange2 = hwMap.get(DistanceSensor.class, SENSOR_RANGE_2);
+
+        frontLeft.setDirection(DcMotor.Direction.FORWARD);
+        frontRight.setDirection(DcMotor.Direction.FORWARD);
+        rearLeft.setDirection(DcMotor.Direction.FORWARD);
+        rearRight.setDirection(DcMotor.Direction.FORWARD);
+
+        // Set all motors to zero power
+        setAllDriveZero();
+
+        frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        //resetDriveEncoders(); //Had to exclude for drive to run properly
+
+        initIMU();
+    }
+
 
     /**
      * @param x           - The X field coordinate to go to.

@@ -94,6 +94,12 @@ public abstract class AutoTrialBase extends LinearOpMode
                 destination.speed, passThrough, pullingFoundation)
                 && opModeIsActive()) {
             updatePosition();
+            // This should display the encoder counts, you can spin the wheels by hand
+            // and see the encoder counts increase. Since they are bulk read, it doesn't
+            // cost us time to call the motor getCurrentPosition again.
+            telemetry.addData("Left Encoder", robot.getLeftEncoderWheelPosition());
+            telemetry.addData("Right Encoder", robot.getRightEncoderWheelPosition());
+            telemetry.addData("Strafe Encoder", robot.getStrafeEncoderWheelPosition());
             telemetry.addData("PositionY", MyPosition.worldYPosition);
             telemetry.addData("PositionX", MyPosition.worldXPosition);
             telemetry.update();
