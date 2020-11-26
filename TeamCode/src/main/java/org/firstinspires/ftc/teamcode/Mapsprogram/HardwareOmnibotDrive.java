@@ -4,15 +4,17 @@ import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.hardware.bosch.JustLoggingAccelerationIntegrator;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.hardware.lynx.LynxModule;
 
 import android.os.SystemClock;
+import java.util.List;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 
 import static java.lang.Math.abs;
@@ -23,7 +25,6 @@ import static java.lang.Math.sin;
 import static java.lang.Math.sqrt;
 import static java.lang.Math.toRadians;
 
-import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.WayPoint;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MyPosition;
 import org.firstinspires.ftc.teamcode.Mapsprogram.RobotUtilities.MovementVars;
 
@@ -52,14 +53,18 @@ public class HardwareOmnibotDrive
     public final static String FRONT_RIGHT_MOTOR = "r1";
     public final static String REAR_LEFT_MOTOR = "l2";
     public final static String REAR_RIGHT_MOTOR = "r2";
-    public final static String SENSOR_RANGE_1 = "range1";
-    public final static String SENSOR_RANGE_2 = "range2";
+
+    // We need both hubs because one has the motors and the other has encoders
+    public final static String HUB1 = "Expansion Hub 2";
+    public final static String HUB2 = "Expansion Hub 3";
+
+    List<LynxModule> allHubs;
 
     // Hardware objects
-    protected DcMotor frontLeft = null;
-    protected DcMotor frontRight = null;
-    protected DcMotor rearLeft = null;
-    protected DcMotor rearRight = null;
+    protected DcMotorEx frontLeft = null;
+    protected DcMotorEx frontRight = null;
+    protected DcMotorEx rearLeft = null;
+    protected DcMotorEx rearRight = null;
     protected BNO055IMU imu = null;
     public DistanceSensor sensorRange; // Sense distance from stone
     public DistanceSensor sensorRange2; // Confirm distance from stone
@@ -82,11 +87,71 @@ public class HardwareOmnibotDrive
 
     protected double strafeMultiplier = STRAFE_MULTIPLIER;
 
+    public double xAngle, yAngle, zAngle;
     /* local OpMode members. */
     protected HardwareMap hwMap  =  null;
 
     /* Constructor */
     public HardwareOmnibotDrive(){
+    }
+
+    public void setPowerforAll( double rf, double rb, double lf, double lb) {
+        setFrontRightMotorPower(rf);
+        setRearRightMotorPower(rb);
+        setFrontLeftMotorPower(lf);
+        setRearLeftMotorPower(lb);
+    }
+
+    public int getLeftEncoderWheelPosition() {
+        // This is to compensate for GF having a negative left.
+        return -rearLeft.getCurrentPosition();
+    }
+
+    public int getRightEncoderWheelPosition() {
+        return frontRight.getCurrentPosition();
+    }
+
+    public int getStrafeEncoderWheelPosition() {
+        return frontLeft.getCurrentPosition();
+    }
+
+    /* Initialize standard Hardware interfaces */
+    public void init(HardwareMap ahwMap) {
+        // Save reference to Hardware map
+        hwMap = ahwMap;
+
+        allHubs = hwMap.getAll(LynxModule.class);
+        for (LynxModule module : allHubs) {
+            module.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
+
+        // Define and Initialize Motors
+        frontLeft = hwMap.get(DcMotorEx.class, FRONT_LEFT_MOTOR);
+        frontRight  = hwMap.get(DcMotorEx.class, FRONT_RIGHT_MOTOR);
+        rearLeft = hwMap.get(DcMotorEx.class, REAR_LEFT_MOTOR);
+        rearRight = hwMap.get(DcMotorEx.class, REAR_RIGHT_MOTOR);
+
+        frontLeft.setDirection(DcMotor.Direction.FORWARD);
+        frontRight.setDirection(DcMotor.Direction.FORWARD);
+        rearLeft.setDirection(DcMotor.Direction.FORWARD);
+        rearRight.setDirection(DcMotor.Direction.FORWARD);
+
+        // Set all motors to zero power
+        setAllDriveZero();
+
+        frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        //resetDriveEncoders(); //Had to exclude for drive to run properly
+
+        // Set the stop mode
+        frontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        frontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        initIMU();
     }
 
     public void setInputShaping(boolean inputShapingEnabled) {
@@ -128,19 +193,9 @@ public class HardwareOmnibotDrive
 
         return imuValue;
     }
-
-    public double readBackLeftTo() {
-        return sensorRange.getDistance(DistanceUnit.INCH);
-    }
-
-    public double readBackRightTo(){
-
-        return sensorRange2.getDistance(DistanceUnit.INCH);
-    }
-
     public void setFrontLeftMotorPower(double power)
     {
-        if(power != frontLeftMotorPower)
+        if(Math.abs(power - frontLeftMotorPower) > 0.005)
         {
             frontLeftMotorPower = power;
             frontLeft.setPower(power);
@@ -149,7 +204,7 @@ public class HardwareOmnibotDrive
 
     public void setRearLeftMotorPower(double power)
     {
-        if(power != rearLeftMotorPower)
+        if(Math.abs(power - rearLeftMotorPower) > 0.005)
         {
             rearLeftMotorPower = power;
             rearLeft.setPower(power);
@@ -158,7 +213,7 @@ public class HardwareOmnibotDrive
 
     public void setFrontRightMotorPower(double power)
     {
-        if(power != frontRightMotorPower)
+        if(Math.abs(power - frontRightMotorPower) > 0.005)
         {
             frontRightMotorPower = power;
             frontRight.setPower(power);
@@ -167,18 +222,11 @@ public class HardwareOmnibotDrive
 
     public void setRearRightMotorPower(double power)
     {
-        if(power != rearRightMotorPower)
+        if(Math.abs(power - rearRightMotorPower) > 0.005)
         {
             rearRightMotorPower = power;
             rearRight.setPower(power);
         }
-    }
-
-    public void setPowerforAll( double rf, double rb, double lf, double lb) {
-        setFrontRightMotorPower(rf);
-        setRearRightMotorPower(rb);
-        setFrontLeftMotorPower(lf);
-        setRearLeftMotorPower(lb);
     }
 
     public void setAllDrive(double power) {
@@ -202,36 +250,118 @@ public class HardwareOmnibotDrive
      */
     public void drive(double xPower, double yPower, double spin, double angleOffset) {
         double gyroAngle = readIMU() + angleOffset;
-        double leftFrontAngle = toRadians(135.0 + gyroAngle); // previous value 45
-        double rightFrontAngle = toRadians(45.0 + gyroAngle); // previous value -45
-        double leftRearAngle = toRadians(225.0 + gyroAngle); // previous value 135
-        double rightRearAngle = toRadians(-45.0 + gyroAngle); // previous value -135
-        double joystickMagnitude = sqrt(xPower*xPower + yPower*yPower);
-        double joystickAngle = atan2(yPower, xPower);
-        double newPower = driverInputShaping(joystickMagnitude);
-        double newSpin = driverInputSpinShaping(spin);
-        double newXPower = newPower * cos(joystickAngle) ;
-        double newYPower = newPower * sin(joystickAngle) ;
+        double joystickMagnitude = sqrt(xPower * xPower + yPower * yPower);
+        double driveAngle = atan2(yPower, xPower);
+        double robotDriveAngle = driveAngle - Math.toRadians(gyroAngle) + Math.toRadians(90);
+        double newPower = driverInputShaping(joystickMagnitude, inputShaping);
 
-        double LFpower = newXPower * cos(leftFrontAngle) + newYPower * sin(leftFrontAngle) + newSpin;
-        double LRpower = newXPower * cos(leftRearAngle) + newYPower * sin(leftRearAngle) + newSpin;
-        double RFpower = newXPower * cos(rightFrontAngle) + newYPower * sin(rightFrontAngle) + newSpin;
-        double RRpower = newXPower * cos(rightRearAngle) + newYPower * sin(rightRearAngle) + newSpin;
+        MovementVars.movement_turn = driverInputSpinShaping(spin, inputShaping);
+        MovementVars.movement_x = newPower * cos(robotDriveAngle);
+        MovementVars.movement_y = newPower * sin(robotDriveAngle);
 
-        double maxPower = max(1.0, max(max(abs(LFpower), abs(LRpower)),
-                max(abs(RFpower), abs(RRpower))));
+        ApplyMovement();
+//        double gyroAngle = readIMU() + angleOffset;
+//        double leftFrontAngle = toRadians(135.0 + gyroAngle); // previous value 45
+//        double rightFrontAngle = toRadians(45.0 + gyroAngle); // previous value -45
+//        double leftRearAngle = toRadians(225.0 + gyroAngle); // previous value 135
+//        double rightRearAngle = toRadians(-45.0 + gyroAngle); // previous value -135
+//        double joystickMagnitude = sqrt(xPower*xPower + yPower*yPower);
+//        double joystickAngle = atan2(yPower, xPower);
+//        double newPower = driverInputShaping(joystickMagnitude);
+//        double newSpin = driverInputSpinShaping(spin);
+//        double newXPower = newPower * cos(joystickAngle) ;
+//        double newYPower = newPower * sin(joystickAngle) ;
+//
+//        double LFpower = newXPower * cos(leftFrontAngle) + newYPower * sin(leftFrontAngle) + newSpin;
+//        double LRpower = newXPower * cos(leftRearAngle) + newYPower * sin(leftRearAngle) + newSpin;
+//        double RFpower = newXPower * cos(rightFrontAngle) + newYPower * sin(rightFrontAngle) + newSpin;
+//        double RRpower = newXPower * cos(rightRearAngle) + newYPower * sin(rightRearAngle) + newSpin;
+//
+//        double maxPower = max(1.0, max(max(abs(LFpower), abs(LRpower)),
+//                max(abs(RFpower), abs(RRpower))));
+//
+//        if(maxPower > 1.0) {
+//            LFpower /= maxPower;
+//            RFpower /= maxPower;
+//            RFpower /= maxPower;
+//            RRpower /= maxPower;
+//        }
+//
+//        setFrontLeftMotorPower(LFpower);
+//        setFrontRightMotorPower(RFpower);
+//        setRearRightMotorPower(RRpower);
+//        setRearLeftMotorPower(LRpower);
+    }
 
-        if(maxPower > 1.0) {
-            LFpower /= maxPower;
-            RFpower /= maxPower;
-            RFpower /= maxPower;
-            RRpower /= maxPower;
+    protected double driverInputShaping( double valueIn, boolean inputShaping) {
+        double aValue = 0.77;
+        double valueOut = 0.0;
+
+        if(valueIn == 0.0) {
+            valueOut = 0.0;
+        } else {
+            if (inputShaping) {
+                valueOut = aValue * Math.pow(valueIn, 3) + (1 - aValue) * valueIn;
+                valueOut = Math.copySign(Math.max(MIN_DRIVE_RATE, Math.abs(valueOut)), valueOut);
+            } else {
+                valueOut = valueIn;
+            }
         }
 
-        setFrontLeftMotorPower(LFpower);
-        setFrontRightMotorPower(RFpower);
-        setRearRightMotorPower(RRpower);
-        setRearLeftMotorPower(LRpower);
+        return valueOut;
+    }
+
+    protected double driverInputSpinShaping( double valueIn, boolean inputShaping) {
+        double aValue = 0.77;
+        double valueOut;
+
+        if(valueIn == 0.0) {
+            valueOut = 0.0;
+        } else {
+            if (inputShaping) {
+                valueOut = aValue * Math.pow(valueIn, 3) + (1 - aValue) * valueIn;
+                valueOut = Math.copySign(Math.max(MIN_SPIN_RATE, Math.abs(valueOut)), valueOut);
+            } else {
+                valueOut = valueIn;
+            }
+        }
+
+        return valueOut;
+    }
+
+    public void disableDriveEncoders()
+    {
+        frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+    }
+
+    public void resetEncoders()
+    {
+        int sleepTime = 0;
+        int encoderCount = frontLeft.getCurrentPosition();
+
+        // The Odometry Encoders
+        frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
+        while((encoderCount != 0) && (sleepTime < 1000)) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) { break; }
+            sleepTime += 10;
+            resetReads();
+            encoderCount = frontLeft.getCurrentPosition();
+        }
+
+        // The Odometry Encoders
+        frontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rearLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rearRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
     }
 
     /**
@@ -440,6 +570,7 @@ public class HardwareOmnibotDrive
         rearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
     }
+  
     public int getLeftEncoderWheelPosition() {
         // This is to compensate for GF having a negative left.
         return -rearLeft.getCurrentPosition();
@@ -492,59 +623,7 @@ public class HardwareOmnibotDrive
 
         initIMU();
     }
-    public boolean gotoRearTarget(double driveSpeed, double spinSpeed){
-        //These are the values we see when it is against the platform
-        double backLeftTargetDistance = 2.0;
-        double backRightTargetDistance = 4.5;
 
-        double leftToDistance = readBackLeftTo();
-        double rightToDistance = readBackRightTo();
-
-        double drivePower = 0.0;
-        double spinPower = 0.0;
-
-        double leftError = backLeftTargetDistance- leftToDistance;
-        double rightError = backRightTargetDistance - rightToDistance;
-        boolean touching = false;
-
-        //Slow down for 10cm
-        double slowDownStart = 20.0;
-        double slowDownRange = 10.0;
-        if((leftError < 0) || (rightError < 0)){
-            //Have to drive backwards towards the foundation
-            drivePower = driveSpeed;
-            //if one of them is within range, drive speed should be minimum, all
-            // rotation
-            if(!((rightError < 0) && (leftError < 0))){
-                drivePower = MIN_DRIVE_RATE;
-                spinPower = Math.copySign(spinPower, MIN_SPIN_RATE);
-
-            } else {
-                // We want the one closer to the foundation minError should be negative.
-                double minError = Math.max(rightError, leftError);
-
-                // Need to set drive power based on range.
-                // Go at slowest speed.
-                double scaleFactor = 0.95 * (slowDownRange - (slowDownStart + minError))/ slowDownRange + MIN_DRIVE_RATE;
-                scaleFactor = Math.min(1.0, scaleFactor);
-                drivePower = driveSpeed * scaleFactor;
-            }
-            // make sure we don't go below minimum spin power;
-            if(spinPower < MIN_SPIN_RATE) {
-                spinPower = Math.copySign(spinPower, MIN_SPIN_RATE);
-            }
-            // make sure we don't go below minimum drive power.
-            if(drivePower < MIN_DRIVE_RATE){
-                drivePower = MIN_DRIVE_RATE;
-            }
-            // Scale the power based on how far
-            drive( 0, -drivePower, -spinPower, -readIMU());
-        }else {
-            drive(0, -MIN_DRIVE_RATE, 0, -readIMU());
-            touching = true;
-        }
-        return touching;
-    }
 
     /**
      * @param x           - The X field coordinate to go to.
@@ -579,6 +658,7 @@ public class HardwareOmnibotDrive
         }
         lastUpdateTime = currTime;
 
+        //Switched tr and tl
         // 2.1 is the ratio between the minimum power to strafe, 0.19, and driving, 0.09.
         double tl_power_raw = MovementVars.movement_y-MovementVars.movement_turn+MovementVars.movement_x*strafeMultiplier;
         double bl_power_raw = MovementVars.movement_y-MovementVars.movement_turn-MovementVars.movement_x*strafeMultiplier;
